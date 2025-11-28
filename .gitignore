@@ -4,6 +4,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+.env
+.db
+
 logs
 *.log
 npm-debug.log*
