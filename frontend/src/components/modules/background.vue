@@ -1,5 +1,5 @@
 <template>
-  <div class="bg-container">
+  <div class="hidden md:block bg-container">
     <!-- Определение SVG фильтра (скрыто) -->
     <svg style="display: none;">
       <defs>

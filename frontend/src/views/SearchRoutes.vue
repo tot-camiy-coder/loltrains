@@ -78,7 +78,6 @@ const syncFormWithURL = async (query) => {
   form.value[FROM_INDEX].name = from
   form.value[TO_INDEX].name = to
 
-  // ИЗМЕНЕНИЕ: Используем свою переменную вместо isStationsLoading
   isResolvingUrl.value = true
 
   try {
@@ -200,7 +199,6 @@ function handleRouteSelect(train) {
         v-if="!hasSearched"
         class="flex flex-col items-center justify-center min-h-[60vh]"
       >
-        <p class="text-gray-500">Введите станции для поиска маршрутов</p>
       </div>
 
       <!-- Загрузка (только при поиске билетов или обновлении URL) -->

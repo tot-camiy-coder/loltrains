@@ -9,5 +9,9 @@
 html {
   scroll-behavior: smooth;
   font-family: 'JetBrains Mono', monospace;
-
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+body::-webkit-scrollbar {
+  display: none;
 }

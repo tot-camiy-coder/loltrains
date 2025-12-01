@@ -3,7 +3,7 @@ import { ref } from 'vue'
 
 const API_BASE = '/api'
 
-// --- НОВАЯ ФУНКЦИЯ: Прямой поиск без реактивности (для резолвинга из URL) ---
+// Прямой поиск станций
 export async function findStation(query) {
   if (!query || query.length < 2) return []
   try {
@@ -16,7 +16,7 @@ export async function findStation(query) {
   }
 }
 
-// Хук для поиска станций (для автокомплита в UI)
+// Хук для поиска станций
 export function useStationSearch() {
   const suggestions = ref([])
   const isLoading = ref(false)
@@ -26,7 +26,7 @@ export function useStationSearch() {
     clearTimeout(debounceTimer)
     debounceTimer = setTimeout(async () => {
       isLoading.value = true
-      const results = await findStation(query) // Используем общую функцию
+      const results = await findStation(query)
       suggestions.value = results
       isLoading.value = false
     }, 1)
@@ -35,7 +35,7 @@ export function useStationSearch() {
   return { suggestions, search, isLoading }
 }
 
-// Хук для получения маршрутов (без изменений, но код нужен полный)
+// Хук для получения маршрутов
 export function useRoutes() {
   const routes = ref([])
   const info = ref({})
@@ -68,19 +68,21 @@ export function useRoutes() {
   return { routes, info, fetchRoutes, isLoading, error }
 }
 
-// Хук для получения остановок поезда (без изменений)
 export function useTrainStops() {
   const stops = ref([])
   const trainNumber = ref('')
   const isLoading = ref(false)
+  const error = ref(null)
 
-  const fetchStops = async (train, codeFrom, codeTo) => {
-    if (!train || !codeFrom || !codeTo) return
+  const fetchStops = async (train, stationFrom, stationTo) => {
+    if (!train || !stationFrom || !stationTo) return
 
     isLoading.value = true
+    error.value = null
+    
     try {
       const res = await fetch(
-        `${API_BASE}/station_list?train_num=${encodeURIComponent(train)}&code_from=${codeFrom}&code_to=${codeTo}`
+        `${API_BASE}/station_list?train_num=${encodeURIComponent(train)}&str_from=${encodeURIComponent(stationFrom)}&str_to=${encodeURIComponent(stationTo)}`
       )
       const data = await res.json()
       
@@ -88,11 +90,12 @@ export function useTrainStops() {
       trainNumber.value = data.train || train
     } catch (e) {
       console.error('Stops fetch error:', e)
+      error.value = e.message
       stops.value = []
     } finally {
       isLoading.value = false
     }
   }
 
-  return { stops, trainNumber, fetchStops, isLoading }
+  return { stops, trainNumber, fetchStops, isLoading, error }
 }

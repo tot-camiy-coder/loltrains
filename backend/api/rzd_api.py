@@ -54,7 +54,7 @@ GET /station_list?train_num={n}&code_from={c1}&code_to={c2}
 
 import asyncio
 from datetime import datetime, timedelta
-from typing import Dict, List
+from typing import Dict, List, Optional, Tuple
 
 import httpx
 from fastapi import APIRouter
@@ -75,17 +75,6 @@ URLS = {
 client = httpx.AsyncClient(timeout=TIMEOUT)
 
 
-#! ПЕРЕНЕСТИ НА FRONTEND!
-def get_train_status(dep: datetime, arr: datetime) -> str:
-    """Определяет статус поезда по времени."""
-    n = datetime.now()
-    if dep < n < arr: return "ENR"  # В пути
-    if n > arr: return "DEP"  # Прибыл/ушел (упрощено)
-    if n >= dep - timedelta(minutes=5): return "ARR"  # Посадка
-    if n >= dep - timedelta(minutes=25): return "APR"  # Прибывает
-    return "SCH"  # По расписанию
-
-
 @cached(ttl=CACHE_TTL, cache=Cache.MEMORY)
 async def _fetch_stations_data(query: str) -> List[Dict]:
     """Ищем станции по названию."""
@@ -101,15 +90,23 @@ async def _fetch_stations_data(query: str) -> List[Dict]:
         ]
     except (httpx.HTTPError, KeyError, IndexError):
         return []
+    
+
+def normalize_time(time_str: str) -> str:
+    """Нормализует время к формату HH:MM:SS."""
+    parts = time_str.split(':')
+    if len(parts) == 2:
+        return f"{time_str}:00"
+    return time_str
 
 
 @cached(ttl=CACHE_TTL, cache=Cache.MEMORY)
-async def _fetch_stops_data(number: str, c0: str, c1: str) -> Dict:
+async def _fetch_stops_data(number: str, c0: str, c1: str, p: str, s: str) -> Dict:
     """Получаем остановки для конкретного поезда."""
     params = {
         "TrainNumber": number, "Origin": c0, "Destination": c1,
-        "DepartureDate": datetime.now().strftime("%Y-%m-%dT00:00:00"),
-        "Provider": "P13", "serviceProvider": "B2B_RZD"
+        "DepartureDate": datetime.now().isoformat(),
+        "Provider": p, "serviceProvider": s
     }
     try:
         resp = await client.get(URLS["ROUTE"], params=params)
@@ -120,46 +117,64 @@ async def _fetch_stops_data(number: str, c0: str, c1: str) -> Dict:
         return {"train": number, "stops": []}
 
     stops, current_date, prev_time = [], datetime.today().date(), None
-    target_codes = {int(c) for c in (c0, c1) if c.isdigit()}
+    target_codes = {int(c) for c in (c0, c1) if str(c).isdigit()}
 
     for stop in stops_data:
         t_arr_str, t_dep_str = stop.get("ArrivalTime"), stop.get("DepartureTime")
-        if not t_arr_str or not t_dep_str: continue
-
-        # Логика для определения даты остановки (с учетом пересечения полуночи)
-        dt_arr_time = datetime.strptime(t_arr_str, "%H:%M:%S").time()
-        if prev_time and dt_arr_time < prev_time:
-            current_date += timedelta(days=1)
-        prev_time = dt_arr_time
-
-        full_arr = datetime.combine(current_date, dt_arr_time)
-        full_dep = datetime.combine(current_date, datetime.strptime(t_dep_str, "%H:%M:%S").time())
-        if full_dep < full_arr: full_dep += timedelta(days=1)
-
-        rem_min = int((full_dep - datetime.now()).total_seconds() / 60)
-        status = "DEP" if datetime.now() > full_dep else ("ARR/APR" if 0 <= rem_min <= 20 else "SCH")
+        
+        # Обработка отсутствующих или пустых времен
+        if not t_arr_str or t_arr_str == '':
+            ts_arr = "Н/Д"
+            full_arr = None
+        else:
+            dt_arr_time = datetime.strptime(normalize_time(t_arr_str), "%H:%M:%S").time()
+            if prev_time and dt_arr_time < prev_time:
+                current_date += timedelta(days=1)
+            prev_time = dt_arr_time
+            full_arr = datetime.combine(current_date, dt_arr_time)
+            ts_arr = full_arr.isoformat()
+        
+        if not t_dep_str or t_dep_str == '':
+            ts_dep = "Н/Д"
+            full_dep = None
+            status = "Н/Д"
+        else:
+            dt_dep_time = datetime.strptime(normalize_time(t_dep_str), "%H:%M:%S").time()
+            full_dep = datetime.combine(current_date, dt_dep_time)
+            if full_arr and full_dep < full_arr:
+                full_dep += timedelta(days=1)
+            ts_dep = full_dep.isoformat()
+            
+            # Вычисляем статус только если есть время отправления
+            rem_min = int((full_dep - datetime.now()).total_seconds() / 60)
+            status = "DEP" if datetime.now() > full_dep else ("ARR/APR" if 0 <= rem_min <= 20 else "SCH")
 
         stops.append({
-            "name": stop.get("StationName"), "code": stop.get("StationCode"),
-            "ts_arr": full_arr.isoformat(), "ts_dep": full_dep.isoformat(),
-            "stop_min": stop.get("StopDuration", 0),
-            "is_target": stop.get("StationCode") in target_codes
+            "name": stop.get("StationName", "Н/Д"),
+            "code": stop.get("StationCode", "Н/Д"),
+            "ts_arr": ts_arr,
+            "ts_dep": ts_dep,
+            "stop_min": stop.get("StopDuration", "Н/Д"),
+            "is_target": stop.get("StationCode") in target_codes,
+            "status": status if 'status' in locals() else "Н/Д"
         })
 
     return {"train": number, "stops": stops}
 
 
-async def _get_real_route(train_num: str, c0: str, c1: str, fallback: str) -> str:
+async def _get_real_route(train_num: str, c0: str, c1: str, fallback: str, provider: str, service: str) -> str:
     """Получает реальный маршрут поезда (первая → последняя станция)."""
     try:
-        stops_data = await _fetch_stops_data(train_num, c0, c1)
+        stops_data = await _fetch_stops_data(train_num, c0, c1, provider, service)
         stops = stops_data.get("stops", [])
         if stops and len(stops) >= 2:
             return f"{stops[0]['name']} - {stops[-1]['name']}"
         elif stops:
             return stops[0]['name']
-    except Exception:
+    except Exception as e:
+        print(e)
         pass
+    print(f"n: {train_num} > {fallback}")
     return fallback
 
 
@@ -186,36 +201,53 @@ async def _fetch_routes_data(c0: str, c1: str) -> Dict:
 
     # Собираем базовую информацию о поездах
     trains_base = []
+    t: dict[str, any]
     for t in departed_data + actual_data.get("Trains", []):
         try:
             dep = datetime.fromisoformat(t.get("DepartureDateTime") or t.get("DepartureTime"))
             arr = datetime.fromisoformat(t.get("ArrivalDateTime") or t.get("ArrivalTime"))
+            if (origin := t.get('OriginName', 'Н/Д')) is None: origin = t.get("TrainName", "Н/Д")
+            if (dest := t.get('DestinationName', 'Н/Д')) is None: dest = t.get("TrainName", "Н/Д")
+            if (description := t.get("TrainDescription")) == '' or description is None: 
+                if t.get("Provider", "P1") == "P1":
+                    description = "СК"
+                else:
+                    description = "пригородный"
             trains_base.append({
+                "name": t.get("TrainName") or '',
+                "type": description,
                 "number": t.get("TrainNumber"),
                 "ts_dep": dep,
                 "ts_arr": arr,
                 "is_express": t.get("CategoryId") == 2,
-                # Fallback на случай если не получим остановки
-                "fallback_route": f"{t.get('OriginName', 'Н/Д')} - {t.get('DestinationName', 'Н/Д')}"
+                "class": t.get("TrainClassNames"),
+                "fallback_route": f"{origin} - {dest}",
+                "provider": t.get("Provider") or "P1",
+                "service": t.get("ServiceProvider") or "B2B_RZD"
             })
         except (ValueError, TypeError):
             continue
-
+    
     # Параллельно получаем реальные маршруты для всех поездов
     route_tasks = [
-        _get_real_route(t["number"], c0, c1, t["fallback_route"]) 
+        _get_real_route(t["number"], c0, c1, t["fallback_route"], t["provider"], t["service"]) 
         for t in trains_base
     ]
     real_routes = await asyncio.gather(*route_tasks)
 
-    # Формируем финальный список
+    # Формируем финальный список (ВКЛЮЧАЕМ provider и service!)
     processed_trains = [
         {
+            "name": train["name"],
+            "type": train["type"],
             "number": train["number"],
-            "route": route,  # ← Теперь тут реальный маршрут!
+            "route": route,
             "ts_dep": train["ts_dep"].isoformat(),
             "ts_arr": train["ts_arr"].isoformat(),
-            "is_express": train["is_express"]
+            "is_express": train["is_express"],
+            "class": train["class"],
+            "provider": train["provider"],      # ← Добавлено
+            "service": train["service"]         # ← Добавлено
         }
         for train, route in zip(trains_base, real_routes)
     ]
@@ -227,6 +259,22 @@ async def _fetch_routes_data(c0: str, c1: str) -> Dict:
         },
         "trains": sorted(processed_trains, key=lambda x: x["ts_dep"])
     }
+
+
+async def _find_train_provider_service(
+    train_num: str, 
+    code_from: str, 
+    code_to: str
+) -> Tuple[Optional[str], Optional[str]]:
+    """Находит provider и service для указанного поезда."""
+    routes_data = await _fetch_routes_data(code_from, code_to)
+    
+    for train in routes_data.get("trains", []):
+        if train.get("number") == train_num:
+            return train.get("provider"), train.get("service")
+    
+    # Поезд не найден - возвращаем дефолтные значения
+    return None, None
 
 
 @rzd_api.get("/stations")
@@ -243,9 +291,24 @@ async def get_routes(code_from: str, code_to: str):
 
 
 @rzd_api.get("/station_list")
-async def get_station_list(train_num: str, code_from: str, code_to: str):
+async def get_station_list(train_num: str, str_from: str, str_to: str):
     """Маршрут конкретного поезда"""
-    return await _fetch_stops_data(train_num, code_from, code_to)
+    stations_from = await _fetch_stations_data(str_from)
+    stations_to = await _fetch_stations_data(str_to)
+    code_from = stations_from[0].get("code")
+    code_to = stations_to[0].get("code")
+    provider, service = await _find_train_provider_service(
+        train_num, code_from, code_to
+    )
+
+    print(provider, service)
+    # Если поезд не найден в маршрутах - используем дефолтные значения
+    if provider is None:
+        provider = "P1"
+    if service is None:
+        service = "B2B_RZD"
+    
+    return await _fetch_stops_data(train_num, code_from, code_to, provider, service)
 
 
 @rzd_api.on_event("shutdown")

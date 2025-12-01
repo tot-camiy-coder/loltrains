@@ -12,7 +12,7 @@ defineEmits(['click'])
   <button
     @click="!disabled && $emit('click')"
     :class="[
-      'group relative flex-1 max-w-[100px] max-h-10 min-h-10 border-2 font-bold py-2 px-4 rounded-lg ' +
+      'group relative flex-1 min-w-[100px] max-h-10 min-h-10 border-2 font-bold py-2 px-4 rounded-lg ' +
       'transition duration-500 overflow-hidden',
       disabled
         ? 'cursor-not-allowed opacity-70 bg-white/5 text-white/50 border-white/10 hover:border-red-500/50 hover:text-red-400'
@@ -38,7 +38,7 @@ defineEmits(['click'])
     >
       Найти
       <Search
-        :size="20"
+        :size="16"
         class="inline-block -rotate-90 -translate-x-8 opacity-0
                transition duration-500 group-hover:opacity-100
                group-hover:translate-x-1 group-hover:rotate-12"
