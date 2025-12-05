@@ -1,340 +1,179 @@
 <script setup>
-import { ChevronRight, MapPinIcon, Zap, Star, Layers, Train } from 'lucide-vue-next'
+import { ChevronRight, MapPinIcon, Zap, Star, Layers } from 'lucide-vue-next'
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 
-const props = defineProps({
-  train: {
-    type: Object,
-    required: true
-  }
-})
+const props = defineProps({ train: { type: Object, required: true } })
 
-// Маппинг классов поездов
-const classLabels = {
-  BrandedTrain: { label: 'Фирменный', icon: 'star', color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20' },
-  HighSpeedTrain: { label: 'Скоростной', icon: 'zap', color: 'text-sky-400', bg: 'bg-sky-500/10', border: 'border-sky-500/20' },
-  LegacyBrandedTrain: { label: 'Фирменный', icon: 'star', color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20' },
-  LegacyHighSpeedTrain: { label: 'Скоростной', icon: 'zap', color: 'text-sky-400', bg: 'bg-sky-500/10', border: 'border-sky-500/20' },
-  LegacyTwoStoreyTrain: { label: 'Двухэтажный', icon: 'layers', color: 'text-violet-400', bg: 'bg-violet-500/10', border: 'border-violet-500/20' }
+const icons = { zap: Zap, star: Star, layers: Layers }
+
+const classConfig = {
+  BrandedTrain: { label: 'Фирменный', icon: 'star', theme: 'amber' },
+  HighSpeedTrain: { label: 'Скоростной', icon: 'zap', theme: 'sky' },
+  LegacyBrandedTrain: { label: 'Фирменный', icon: 'star', theme: 'amber' },
+  LegacyHighSpeedTrain: { label: 'Скоростной', icon: 'zap', theme: 'sky' },
+  LegacyTwoStoreyTrain: { label: 'Двухэтажный', icon: 'layers', theme: 'violet' }
 }
 
-// ===== ОПРЕДЕЛЕНИЕ ТИПА ТРАНСПОРТА =====
-const isElektrichka = computed(() => {
-  const type = (props.train.type || '').toLowerCase().trim()
-  
-  if (!type) return true
-  if (type.includes('пригородный')) return true
-  
-  return false
-})
+const themeClasses = (t) => `text-${t}-400 bg-${t}-500/10 border-${t}-500/20`
 
-// Лейбл типа транспорта
-const transportLabel = computed(() => {
-  return isElektrichka.value ? 'Электричка' : 'Поезд'
-})
+const isElektrichka = computed(() => !props.train.type || props.train.type.toLowerCase().includes('пригородный'))
+const trainName = computed(() => props.train.name?.trim())
 
-// Имя поезда (если есть)
-const trainName = computed(() => {
-  return (props.train.name || '').trim()
-})
-
-// Проверка на экспресс
-const isExpress = computed(() => {
-  return props.train.is_express === true
-})
-
-// Уникальные классы + экспресс бейдж
 const trainClasses = computed(() => {
   const classes = []
+  const seen = new Set()
   
-  if (isExpress.value) {
-    classes.push({ 
-      label: 'Экспресс', 
-      icon: 'zap', 
-      color: 'text-emerald-400', 
-      bg: 'bg-emerald-500/10', 
-      border: 'border-emerald-500/20' 
-    })
+  if (props.train.is_express) {
+    classes.push({ label: 'Экспресс', icon: 'zap', theme: 'red' })
+    seen.add('Экспресс')
   }
   
-  if (props.train.class && Array.isArray(props.train.class)) {
-    const seen = new Set(classes.map(c => c.label))
-    
-    props.train.class.forEach(cls => {
-      const item = classLabels[cls]
-      if (item && !seen.has(item.label)) {
-        seen.add(item.label)
-        classes.push(item)
-      }
-    })
-  }
+  props.train.class?.forEach(cls => {
+    const c = classConfig[cls]
+    if (c && !seen.has(c.label)) {
+      seen.add(c.label)
+      classes.push(c)
+    }
+  })
   
   return classes
 })
 
-// Парсинг времени
-const departure = computed(() => new Date(props.train.ts_dep))
-const arrival = computed(() => new Date(props.train.ts_arr))
+const dep = computed(() => new Date(props.train.ts_dep))
+const arr = computed(() => new Date(props.train.ts_arr))
+const now = ref(new Date())
 
-// Форматирование
-const formatTime = (date) => {
-  return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
-}
+const fmt = (d, opts) => d.toLocaleString('ru-RU', opts)
+const fmtTime = d => fmt(d, { hour: '2-digit', minute: '2-digit' })
+const fmtDate = d => fmt(d, { day: 'numeric', month: 'short' })
 
-const formatDate = (date) => {
-  return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
-}
-
-// Длительность
-const durationText = computed(() => {
-  const diff = arrival.value - departure.value
-  const hours = Math.floor(diff / (1000 * 60 * 60))
-  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
-  
-  if (hours === 0) return `${minutes} мин`
-  if (minutes === 0) return `${hours} ч`
-  return `${hours} ч ${minutes} мин`
+const duration = computed(() => {
+  const m = Math.floor((arr.value - dep.value) / 60000)
+  const h = Math.floor(m / 60), mins = m % 60
+  return h ? (mins ? `${h} ч ${mins} мин` : `${h} ч`) : `${m} мин`
 })
 
-// ✅ Реактивное текущее время
-const currentTime = ref(new Date())
-
-// Процент выполнения пути (реальный)
-const progressPercent = computed(() => {
-  const now = currentTime.value.getTime()
-  const start = departure.value.getTime()
-  const end = arrival.value.getTime()
-  const total = end - start
-  const current = now - start
-
-  if (current <= 0) return 0
-  if (current >= total) return 100
-  return (current / total) * 100
+const progress = computed(() => {
+  const [n, s, e] = [now.value, dep.value, arr.value].map(d => d.getTime())
+  return Math.max(0, Math.min(100, (n - s) / (e - s) * 100))
 })
 
-// Для плавной анимации - начинаем с 0
 const displayProgress = ref(0)
-let updateInterval = null
+let interval
 
 onMounted(() => {
-  // Двойной requestAnimationFrame для гарантированного срабатывания transition
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      displayProgress.value = progressPercent.value
-    })
-  })
-  
-  // ✅ Обновление каждую минуту (60000 мс)
-  updateInterval = setInterval(() => {
-    currentTime.value = new Date()
-    displayProgress.value = progressPercent.value
-  }, 20000) // 1 минута
+  requestAnimationFrame(() => requestAnimationFrame(() => displayProgress.value = progress.value))
+  interval = setInterval(() => { now.value = new Date(); displayProgress.value = progress.value }, 20000)
 })
 
-onUnmounted(() => {
-  if (updateInterval) {
-    clearInterval(updateInterval)
-  }
+onUnmounted(() => clearInterval(interval))
+
+const minTo = (target) => Math.ceil((target - now.value) / 60000)
+
+const bgColor = computed(() => {
+  const [n, d, a] = [now.value, dep.value, arr.value]
+  if (n > a) return ['bg-zinc-400/5', 'hover:bg-zinc-500/10', 'opacity-80']
+  if (n > d) return ['bg-emerald-400/10', 'hover:bg-emerald-500/20']
+  const m = minTo(d)
+  if (m <= 5) return ['bg-red-400/9', 'hover:bg-red-500/15']
+  if (m <= 25) return ['bg-amber-400/12', 'hover:bg-amber-500/20']
+  return ['bg-[#242527]', 'hover:bg-[#313235]']
 })
 
-// ✅ Статус с отображением оставшегося времени
 const status = computed(() => {
-  const now = currentTime.value
-  const dep = departure.value
-  const arr = arrival.value
+  const [n, d, a] = [now.value, dep.value, arr.value]
   
-  // Ушёл
-  if (now > arr) {
-    return { 
-      text: 'Прибыл', 
-      color: 'text-zinc-400', 
-      bg: 'bg-zinc-800', 
-      dot: 'bg-zinc-500' 
-    }
+  if (n > a) return { text: 'Ушёл', color: 'text-zinc-400', bg: 'bg-zinc-800', dot: 'bg-zinc-500' }
+  
+  if (n > d) {
+    const m = minTo(a), h = Math.floor(m / 60), mins = m % 60
+    const t = h && mins ? `${h}ч ${mins}м` : h ? `${h}ч` : `${mins}м`
+    return { text: `В пути • ${t}`, color: 'text-green-400', bg: 'bg-green-500/10', dot: 'animate-pulse bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' }
   }
   
-  // В пути - показываем сколько осталось до прибытия
-  if (now > dep) {
-    const minToArr = Math.ceil((arr - now) / (1000 * 60))
-    const hours = Math.floor(minToArr / 60)
-    const mins = minToArr % 60
-    
-    let timeLeft = ''
-    if (hours > 0 && mins > 0) {
-      timeLeft = `${hours}ч ${mins}м`
-    } else if (hours > 0) {
-      timeLeft = `${hours}ч`
-    } else {
-      timeLeft = `${mins}м`
-    }
-    
-    return { 
-      text: `В пути (ещё ${timeLeft})`, 
-      color: 'text-green-400', 
-      bg: 'bg-green-500/10', 
-      dot: 'animate-pulse bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' 
-    }
-  }
+  const m = minTo(d)
+  if (m <= 1) return { text: 'Отправляется', color: 'text-red-400', bg: 'bg-red-500/10', dot: 'animate-pulse bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]' }
+  if (m <= 5) return { text: `Посадка • ${m} мин`, color: 'text-red-400', bg: 'bg-red-500/10', dot: 'animate-pulse bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]' }
+  if (m <= 25) return { text: `Через ${m} мин`, color: 'text-amber-400', bg: 'bg-amber-500/10', dot: 'bg-amber-500' }
   
-  const minToDep = Math.ceil((dep - now) / (1000 * 60))
-  
-  // Посадка (< 5 мин) - показываем минуты
-  if (minToDep <= 5) {
-    return { 
-      text: minToDep <= 1 ? 'Отправляется' : `Посадка • ${minToDep} мин`, 
-      color: 'text-red-400', 
-      bg: 'bg-red-500/10', 
-      dot: 'animate-pulse bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]' 
-    }
-  }
-  
-  // Прибывает (5-25 мин) - показываем минуты
-  if (minToDep <= 25) {
-    return { 
-      text: `Через ${minToDep} мин`, 
-      color: 'text-amber-400', 
-      bg: 'bg-amber-500/10', 
-      dot: 'bg-amber-500' 
-    }
-  }
-  
-  // Больше 25 минут
-  return { 
-    text: 'По расписанию', 
-    color: 'text-zinc-300', 
-    bg: 'bg-zinc-700/50', 
-    dot: 'bg-zinc-500' 
-  }
+  return { text: 'По расписанию', color: 'text-zinc-300', bg: 'bg-zinc-700/50', dot: 'bg-zinc-500' }
 })
 
-const isDifferentDay = computed(() => {
-  return departure.value.toDateString() !== arrival.value.toDateString()
-})
+const isDiffDay = computed(() => dep.value.toDateString() !== arr.value.toDateString())
 </script>
 
 <template>
   <article
-    class="group relative w-full bg-[#18181B] hover:bg-[#202024] 
-           rounded-2xl border border-white/5 hover:border-white/10 
-           p-5 cursor-pointer transition-all duration-300 
-           shadow-lg shadow-black/20 active:scale-[0.99]"
+    :class="bgColor"
+    class="group relative w-full rounded-xl 
+           p-4 cursor-pointer transition-all duration-300 shadow-lg shadow-black/20 active:scale-[0.99]"
   >
-    <!-- Верхняя часть: Тип, Номер, Имя и Статус -->
-    <div class="flex items-start justify-between mb-6">
-      <!-- ЛЕВАЯ ЧАСТЬ -->
-      <div class="flex flex-col min-w-0 flex-1 mr-3">
-        <!-- Тип транспорта (Поезд / Электричка) -->
-        <div class="flex items-center gap-1.5 mb-0.5">
-          <span 
-          :class="isElektrichka ? 'text-white/40' : 'text-white/50'"  
-          class="text-xs font-bold uppercase tracking-wider">
-            {{ transportLabel }}
+    <!-- Header -->
+    <div class="flex items-start justify-between gap-3 mb-4">
+      <div class="flex flex-col min-w-0 flex-1">
+        <div class="flex items-baseline gap-2.5 flex-wrap">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-white/40 relative -top-2">
+            {{ isElektrichka ? 'Электричка' : 'Поезд' }}
           </span>
+          <span class="text-2xl font-black text-white tracking-tight leading-none">{{ train.number }}</span>
+          
+          <template v-for="(c, i) in trainClasses" :key="i">
+            <span :class="themeClasses(c.theme)" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide border">
+              <component :is="icons[c.icon]" :size="9" :stroke-width="2.5" />
+              {{ c.label }}
+            </span>
+          </template>
         </div>
         
-        <!-- Номер и бейджи -->
-        <div class="flex items-center gap-3 flex-wrap">
-          <span class="text-3xl font-black text-white tracking-tight leading-none">
-            {{ train.number }}
-          </span>
-          
-          <!-- Бейджи классов поезда -->
-          <div v-if="trainClasses.length" class="flex items-center gap-1.5 flex-wrap">
-            <span 
-              v-for="(cls, idx) in trainClasses" 
-              :key="idx"
-              class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide border"
-              :class="[cls.bg, cls.color, cls.border]"
-            >
-              <Zap v-if="cls.icon === 'zap'" :size="10" :stroke-width="2.5" />
-              <Star v-else-if="cls.icon === 'star'" :size="10" :stroke-width="2.5" />
-              <Layers v-else-if="cls.icon === 'layers'" :size="10" :stroke-width="2.5" />
-              {{ cls.label }}
-            </span>
-          </div>
-        </div>
-
-        <!-- Имя поезда (если есть) -->
-        <span 
-          v-if="trainName" 
-          class="mt-1.5 text-sm font-medium text-amber-500 truncate"
-          :title="trainName"
-        >
+        <span v-if="trainName" class="mt-1 text-sm font-medium text-amber-500 truncate" :title="trainName">
           «{{ trainName }}»
         </span>
       </div>
 
-      <!-- Статус бейдж -->
-      <div 
-        class="px-3 py-1.5 rounded-lg text-xs font-medium border border-transparent transition-colors flex items-center gap-2 shrink-0"
-        :class="[status.bg, status.color]"
-      >
-        <span class="-ml-1 w-1.5 h-1.5 rounded-full" :class="status.dot"></span>
-        {{ status.text }}
+      <div :class="[status.bg, status.color]" class="px-2.5 py-1 rounded-md text-[11px] font-medium flex items-center gap-1.5 shrink-0">
+        <span :class="status.dot" class="w-1.5 h-1.5 rounded-full" />
+        <span class="hidden xs:inline">{{ status.text }}</span>
+        <span class="xs:hidden">{{ status.text }}</span>
       </div>
     </div>
 
-    <!-- Средняя часть: Временная шкала -->
-    <div class="flex items-end justify-between gap-4 relative z-10">
-      <div class="flex flex-col">
-        <span class="text-2xl font-bold text-white tabular-nums leading-none mb-1">
-          {{ formatTime(departure) }}
-        </span>
-        <span class="text-sm font-medium text-white/40">
-          {{ formatDate(departure) }}
-        </span>
+    <!-- Timeline -->
+    <div class="flex items-center gap-3">
+      <div class="flex flex-col sm:flex-row sm:items-baseline sm:gap-2">
+        <span class="text-xl font-bold text-white tabular-nums">{{ fmtTime(dep) }}</span>
+        <span class="text-[11px] sm:text-xs text-white/40">{{ fmtDate(dep) }}</span>
       </div>
 
-      <div class="flex-1 flex flex-col items-center pb-1.5 px-2 min-w-20">
-        <div class="text-xs font-medium text-white/30 mb-2">
-          {{ durationText }}
+      <div class="flex-1 flex flex-col items-center min-w-12">
+        <span class="text-[10px] font-medium text-white/30 mb-1.5">{{ duration }}</span>
+        <div class="w-full h-0.5 bg-white/10 rounded-full relative overflow-hidden">
+          <div class="absolute left-0 top-0 h-full rounded-full bg-linear-to-r from-lime-300 to-emerald-400 
+                      shadow-[0_0_6px_rgba(16,185,129,0.4)] transition-all duration-1000 ease-out"
+               :style="{ width: `${displayProgress}%` }" />
         </div>
-        
-        <!-- ✅ Прогресс-бар с плавной анимацией -->
-        <div class="w-full h-1 bg-white/10 rounded-full relative overflow-hidden">
-          <div 
-            class="absolute left-0 top-0 h-full rounded-full bg-linear-to-r from-lime-300 to-emerald-400 
-                   shadow-[0_0_8px_rgba(16,185,129,0.5)] transition-all duration-1000 ease-out"
-            :style="{ width: `${displayProgress}%` }"
-          ></div>
-        </div>
-
-        <div class="w-full flex justify-between -mt-1.5 px-px">
-          <div class="relative w-2 h-2 right-0.5 rounded-full bg-[#27272a] border-2"
-          :class="displayProgress > 0 
-              ? 'border-lime-300 shadow-[0_0_6px_rgb(187,244,81,0.5)]'
-              : 'border-white/20'"></div>
-          <div 
-            class="relative w-2 h-2 left-0.5 rounded-full bg-[#27272a] border-2 transition-colors duration-500"
-            :class="displayProgress >= 100 
-              ? 'border-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.5)]'
-              : 'border-white/20'"
-          ></div>
+        <div class="w-full flex justify-between -mt-1 px-px">
+          <div class="w-1.5 h-1.5 rounded-full bg-zinc-900 border-[1.5px] transition-colors"
+               :class="displayProgress > 0 ? 'border-lime-300 shadow-[0_0_4px_rgb(187,244,81,0.4)]' : 'border-white/20'" />
+          <div class="w-1.5 h-1.5 rounded-full bg-zinc-900 border-[1.5px] transition-colors duration-500"
+               :class="displayProgress >= 100 ? 'border-emerald-500 shadow-[0_0_4px_rgba(16,185,129,0.4)]' : 'border-white/20'" />
         </div>
       </div>
 
-      <div class="flex flex-col items-end text-right">
-        <span class="text-2xl font-bold text-white tabular-nums leading-none mb-1">
-          {{ formatTime(arrival) }}
-        </span>
-        <span class="text-sm font-medium text-white/40">
-          {{ formatDate(arrival) }}
-          <span v-if="isDifferentDay" class="text-amber-500 ml-0.5 font-bold text-xs sup">+1</span>
+      <div class="flex flex-col items-end sm:flex-row sm:items-baseline sm:gap-2">
+        <span class="text-xl font-bold text-white tabular-nums">{{ fmtTime(arr) }}</span>
+        <span class="text-[11px] sm:text-xs text-white/40">
+          {{ fmtDate(arr) }}<span v-if="isDiffDay" class="text-amber-500 font-bold"> +1</span>
         </span>
       </div>
     </div>
 
-    <!-- Нижняя часть: Маршрут -->
-    <div class="mt-6 pt-4 border-t border-white/5 flex items-center justify-between">
-      <div class="flex items-center gap-2 text-sm text-white/60 truncate pr-4">
-        <MapPinIcon :size="18" :stroke-width="2" class="text-white/20 shrink-0"/>
-        <span class="truncate group-hover:text-white/80 transition-colors">{{ train.route }}</span>
+    <!-- Footer -->
+    <div class="mt-3 pt-3 border-t border-white/5 flex items-center justify-between">
+      <div class="flex items-center gap-2 text-sm text-white/50 truncate pr-3 min-w-0">
+        <MapPinIcon :size="14" :stroke-width="2" class="text-white/25 shrink-0" />
+        <span class="truncate group-hover:text-white/70 transition-colors">{{ train.route }}</span>
       </div>
-
-      <div class="w-8 h-8 rounded-full flex items-center justify-center bg-white/0
-        group-hover:text-white transition-all text-white/10 duration-500 shrink-0 -mr-2">
-        <ChevronRight />
-      </div>
+      <ChevronRight :size="18" class="text-white/10 group-hover:text-white/40 group-hover:translate-x-0.5 transition-all duration-300 shrink-0" />
     </div>
   </article>
 </template>

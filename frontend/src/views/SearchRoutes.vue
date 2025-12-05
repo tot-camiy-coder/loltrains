@@ -176,47 +176,76 @@ function handleRouteSelect(train) {
 </script>
 
 <template>
-  <div class="min-h-screen flex flex-col">
-    <!-- Шапка с поиском -->
-    <!-- is-loading здесь всё ещё использует isStationsLoading для показа спиннера ВНУТРИ инпута -->
-    <SearchHeader
-      v-model:form="form"
-      :active-input-index="activeInputIndex"
-      :current-items="autocompleteItems"
-      :is-loading="isStationsLoading" 
-      :is-search-valid="isFormValid"
-      :is-compact="hasSearched"
-      @search="handleSearch"
-      @select="handleSelect"
-      @swap="handleSwap"
-      @find="performSearch"
-    />
-
-    <!-- Основной контент -->
-    <main class="flex-1 pt-4 px-4">
-      <!-- До поиска -->
-      <div
-        v-if="!hasSearched"
-        class="flex flex-col items-center justify-center min-h-[60vh]"
-      >
+  <div class="min-h-screen flex flex-col pb-20">
+    <!-- До поиска: всё по центру -->
+    <div
+      v-if="!hasSearched"
+      class="flex-1 flex flex-col items-center justify-center px-4"
+    >
+      <!-- Заголовок -->
+      <div class="text-center mb-6 md:mb-8">
+        <h1 class="text-2xl md:text-4xl font-bold text-white tracking-tight">
+          Куда отправимся сегодня?
+        </h1>
+        <p class="mt-2 text-sm md:text-base text-white/60">
+          Найдите лучшие маршруты, расписание и актуальные рейсы
+        </p>
       </div>
 
-      <!-- Загрузка (только при поиске билетов или обновлении URL) -->
-      <div
-        v-else-if="isLoading"
-        class="flex justify-center items-center pt-10"
-      >
-        <span class="text-gray-600">Загрузка...</span>
+      <!-- Шапка с поиском (центрированная) -->
+      <div class="w-full max-w-4xl">
+        <SearchHeader
+          v-model:form="form"
+          :active-input-index="activeInputIndex"
+          :current-items="autocompleteItems"
+          :is-loading="isStationsLoading"
+          :is-search-valid="isFormValid"
+          :is-compact="false"
+          @search="handleSearch"
+          @select="handleSelect"
+          @swap="handleSwap"
+          @find="performSearch"
+        />
+      </div>
+    </div>
+
+    <!-- После поиска: обычный layout -->
+    <template v-else>
+      <!-- Компактный поиск сверху -->
+      <div class="px-4">
+        <SearchHeader
+          v-model:form="form"
+          :active-input-index="activeInputIndex"
+          :current-items="autocompleteItems"
+          :is-loading="isStationsLoading"
+          :is-search-valid="isFormValid"
+          :is-compact="true"
+          @search="handleSearch"
+          @select="handleSelect"
+          @swap="handleSwap"
+          @find="performSearch"
+        />
       </div>
 
-      <!-- Результаты (остаются видимыми при вводе текста) -->
-      <RoutesList
-        v-else
-        :routes="routes"
-        :info="info"
-        :is-loading="isRoutesLoading"
-        @select="handleRouteSelect"
-      />
-    </main>
+      <!-- Основной контент -->
+      <main class="flex-1 pt-4 px-4">
+        <!-- Загрузка -->
+        <div
+          v-if="isLoading"
+          class="flex justify-center items-center pt-10"
+        >
+          <span class="text-gray-600">Загрузка...</span>
+        </div>
+
+        <!-- Результаты -->
+        <RoutesList
+          v-else
+          :routes="routes"
+          :info="info"
+          :is-loading="isRoutesLoading"
+          @select="handleRouteSelect"
+        />
+      </main>
+    </template>
   </div>
 </template>

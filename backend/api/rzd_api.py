@@ -64,7 +64,7 @@ rzd_api = APIRouter()
 
 # Настройки
 TIMEOUT = 30
-CACHE_TTL = 72000
+CACHE_TTL = 600
 URLS = {
     "SUGGEST": "https://ticket.rzd.ru/api/v1/suggests",
     "ROUTE": "https://ticket.rzd.ru/apib2b/p/Railway/V1/Search/TrainRoute",
@@ -117,7 +117,10 @@ async def _fetch_stops_data(number: str, c0: str, c1: str, p: str, s: str) -> Di
         return {"train": number, "stops": []}
 
     stops, current_date, prev_time = [], datetime.today().date(), None
-    target_codes = {int(c) for c in (c0, c1) if str(c).isdigit()}
+    
+    # Преобразуем коды в int для сравнения
+    code_from = int(c0) if str(c0).isdigit() else None  # Станция A
+    code_to = int(c1) if str(c1).isdigit() else None    # Станция B
 
     for stop in stops_data:
         t_arr_str, t_dep_str = stop.get("ArrivalTime"), stop.get("DepartureTime")
@@ -137,26 +140,30 @@ async def _fetch_stops_data(number: str, c0: str, c1: str, p: str, s: str) -> Di
         if not t_dep_str or t_dep_str == '':
             ts_dep = "Н/Д"
             full_dep = None
-            status = "Н/Д"
         else:
             dt_dep_time = datetime.strptime(normalize_time(t_dep_str), "%H:%M:%S").time()
             full_dep = datetime.combine(current_date, dt_dep_time)
             if full_arr and full_dep < full_arr:
                 full_dep += timedelta(days=1)
             ts_dep = full_dep.isoformat()
+        
+        # Определяем is_target: 0 = станция A, 1 = станция B, null = промежуточная
+        station_code = int(stop.get("StationCode")) if stop.get("StationCode") else None
+        
+        if station_code == code_from:
+            is_target = 0  # Станция отправления (A)
+        elif station_code == code_to:
+            is_target = 1  # Станция назначения (B)
+        else:
+            is_target = None  # Промежуточная станция
             
-            # Вычисляем статус только если есть время отправления
-            rem_min = int((full_dep - datetime.now()).total_seconds() / 60)
-            status = "DEP" if datetime.now() > full_dep else ("ARR/APR" if 0 <= rem_min <= 20 else "SCH")
-
         stops.append({
             "name": stop.get("StationName", "Н/Д"),
             "code": stop.get("StationCode", "Н/Д"),
             "ts_arr": ts_arr,
             "ts_dep": ts_dep,
             "stop_min": stop.get("StopDuration", "Н/Д"),
-            "is_target": stop.get("StationCode") in target_codes,
-            "status": status if 'status' in locals() else "Н/Д"
+            "is_target": is_target,
         })
 
     return {"train": number, "stops": stops}

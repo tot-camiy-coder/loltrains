@@ -1,8 +1,9 @@
 <script setup>
-import { watch, computed, ref } from 'vue'
+import { watch, computed, ref, onMounted, onUnmounted, nextTick } from 'vue'
 import StationsSelect from '../Main/StationsSelect.vue'
+import SearchForm from '../Main/SearchForm.vue'
+import { ArrowRight, ArrowRightLeft } from 'lucide-vue-next'
 import SearchButton from '../Main/SearchButton.vue'
-import { ArrowRightLeft } from 'lucide-vue-next'
 
 const props = defineProps({
   form: Array,
@@ -15,160 +16,165 @@ const props = defineProps({
 
 const emit = defineEmits(['update:form', 'search', 'select', 'swap', 'find'])
 
-const updateField = (index, value) => {
+// Скролл для стики-хедера
+const isScrolled = ref(false)
+const handleScroll = () => isScrolled.value = window.scrollY > 80
+
+onMounted(() => window.addEventListener('scroll', handleScroll))
+onUnmounted(() => window.removeEventListener('scroll', handleScroll))
+
+// ✅ Исправленный автопоиск
+const lastSearchKey = ref('')
+
+// Используем computed для более надёжного отслеживания
+const searchKey = computed(() => {
+  const fromCode = props.form[0]?.code || ''
+  const toCode = props.form[1]?.code || ''
+  return `${fromCode}-${toCode}`
+})
+
+// Флаг для предотвращения двойного срабатывания
+const isAutoSearching = ref(false)
+
+watch(searchKey, async (newKey, oldKey) => {
+  // Пропускаем если ключ не изменился или уже ищем
+  if (newKey === oldKey || isAutoSearching.value) return
+  
+  const fromCode = props.form[0]?.code
+  const toCode = props.form[1]?.code
+  
+  // Проверяем все условия
+  if (props.isCompact && fromCode && toCode && newKey !== lastSearchKey.value) {
+    isAutoSearching.value = true
+    lastSearchKey.value = newKey
+    
+    // Ждём следующий тик для корректной работы на мобильных
+    await nextTick()
+    
+    // Небольшая задержка для закрытия клавиатуры на мобильных
+    setTimeout(() => {
+      emit('find')
+      isAutoSearching.value = false
+    }, 100)
+  }
+}, { flush: 'post' }) // ✅ flush: 'post' важен для мобильных
+
+// Хелперы
+const updateField = (i, name) => {
   const newForm = [...props.form]
-  newForm[index] = { ...newForm[index], name: value }
+  newForm[i] = { ...newForm[i], name }
   emit('update:form', newForm)
 }
 
-// Уникальный ключ текущего поиска (для предотвращения дублей)
-const lastSearchKey = ref('')
+const getSuggestions = (i) => props.activeInputIndex === i ? props.currentItems : []
+const getLoading = (i) => props.activeInputIndex === i && props.isLoading
 
-// Комбинация выбранных станций
-const searchKey = computed(() => 
-  `${props.form[0]?.code || ''}-${props.form[1]?.code || ''}`
-)
-
-// Автопоиск когда обе станции выбраны
-watch(searchKey, (newKey) => {
-  const bothSelected = props.form[0]?.code && props.form[1]?.code
-  const isNewSearch = newKey !== lastSearchKey.value
-  
-  if (bothSelected && isNewSearch) {
-    lastSearchKey.value = newKey
-    // Небольшая задержка для плавности
-    setTimeout(() => {
-      emit('find')
-    }, 10)
+const handleFind = () => {
+  if (props.isSearchValid) {
+    emit('find')
   }
-})
+}
+
+const fields = [
+  { index: 0, label: 'A', btnClass: 'bg-linear-to-br from-pink-400 to-orange-300 text-black text-2xl font-extrabold' },
+  { index: 1, label: 'B', btnClass: 'bg-gray-600 text-white text-2xl font-extrabold' }
+]
 </script>
 
 <template>
-  <header 
-    :class="[
-      'sticky top-0 z-50 transition-all duration-300',
-      isCompact ? 'py-3 bg-[#0a0a0b]/95 backdrop-blur-xl border-b border-white/10' : 'py-6 md:py-8'
-    ]"
+  <!-- Мобильный стики-хедер -->
+  <div 
+    class="fixed top-0 w-screen inset-x-0 z-60 bg-[#19191900] backdrop-blur-xl border-b border-white/10 px-4 py-2 transition-transform duration-300 md:hidden"
+    :class="isScrolled ? 'translate-y-0' : '-translate-y-full'"
   >
-    <div class="max-w-6xl mx-auto px-4">
-      <!-- Заголовок (Скрыт в компакте) -->
-      <div 
-        v-if="!isCompact" 
-        class="text-center mb-6 md:mb-8"
-      >
-        <h1 class="text-2xl md:text-4xl font-extrabold text-white tracking-tight">
-          Куда отправимся сегодня?
-        </h1>
-        <p class="mt-2 text-sm md:text-base text-white/60 font-medium">
-          Найдите лучшие маршруты, расписание и актуальные рейсы.
-        </p>
-      </div>
-
-      <!-- Основной контейнер поиска -->
-      <div 
-        :class="[
-          'relative bg-[#18181B] rounded-xl border border-white/10 shadow-2xl transition-all duration-300',
-          isCompact ? 'max-w-4xl mx-auto p-1' : 'w-full md:w-4/6 mx-auto p-2 md:p-2'
-        ]"
-      >
-        <!-- Фоновое свечение (Десктоп) -->
-        <div 
-          v-if="!isCompact"
-          class="absolute inset-0 -z-1 scale-x-105 scale-y-110 blur-3xl opacity-20 bg-linear-to-bl from-purple-500 via-pink-500 to-orange-400 rounded-2xl"
-        />
-
-        <div class="relative z-1">
-          <div class="flex flex-col md:flex-row gap-3 md:gap-2 items-stretch md:items-center">
-            
-            <!-- Поле ОТКУДА (A) -->
-            <div class="flex items-center gap-1 flex-1 relative group">
-              <!-- Индикатор A (Мобильный) -->
-              <div class="md:hidden shrink-0 flex flex-col items-center gap-1">
-                <div class="w-8 h-8 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-purple-400 font-bold text-4xs shadow-lg">
-                  A
-                </div>
-              </div>
-
-              <!-- Инпут -->
-              <div class="w-full">
-                <StationsSelect
-                  :modelValue="form[0].name"
-                  @update:modelValue="updateField(0, $event)"
-                  :code="form[0].code"
-                  :label="form[0].label"
-                  :suggestions="activeInputIndex === 0 ? currentItems : []"
-                  :isLoading="activeInputIndex === 0 && isLoading"
-                  :compact="isCompact"
-                  class="w-full"
-                  @search="(q) => $emit('search', q, 0)"
-                  @select="(s) => $emit('select', s, 0)"
-                />
-              </div>
-            </div>
-
-            <!-- Кнопка Swap (ДЕСКТОП ВЕРСИЯ) -->
-            <button
-              type="button"
-              @click="$emit('swap')"
-              class="hidden md:flex shrink-0 p-2.5 rounded-xl bg-white/5 hover:bg-white/10 
-                     text-white/50 hover:text-white transition-all duration-200
-                     hover:rotate-180 active:scale-90 border border-transparent hover:border-white/10"
-              title="Поменять местами"
-            >
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                      d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-              </svg>
-            </button>
-
-            <!-- Поле КУДА (B) + Кнопка Swap (МОБИЛЬНАЯ ВЕРСИЯ) -->
-            <div class="flex items-center gap-3 flex-1">
-              
-              <!-- Контейнер Swap + B (Мобильный) -->
-              <div class="md:hidden shrink-0 flex items-center justify-center w-8 h-8 relative z-10">
-                 <!-- Кнопка Swap (Мобильная) -->
-                 <button
-                  type="button"
-                  @click="$emit('swap')"
-                  class="absolute w-8 h-8 flex items-center justify-center rounded-lg bg-[#27272a] border border-white/10 text-white/60 active:scale-90 active:text-white transition-all z-20 shadow-xl"
-                >
-                  <ArrowRightLeft :stroke-width="2" :size="20" class="text-white/60 rotate-90" />
-                </button>
-              </div>
-
-               <!-- Реальный индикатор B (правее кнопки swap) -->
-               <div class="md:hidden shrink-0 w-8 h-8 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-orange-400 font-bold text-4xs">
-                  B
-               </div>
-
-              <!-- Инпут -->
-              <div class="w-full relative">
-                <StationsSelect
-                  :modelValue="form[1].name"
-                  @update:modelValue="updateField(1, $event)"
-                  :code="form[1].code"
-                  :label="form[1].label"
-                  :suggestions="activeInputIndex === 1 ? currentItems : []"
-                  :isLoading="activeInputIndex === 1 && isLoading"
-                  :compact="isCompact"
-                  class="w-full"
-                  @search="(q) => $emit('search', q, 1)"
-                  @select="(s) => $emit('select', s, 1)"
-                />
-              </div>
-            </div>
-
-            <!-- Кнопка поиска (ТОЛЬКО в обычном режиме) -->
-            <div v-if="!isCompact" class="pt-2 md:pt-0">
-              <SearchButton
-                :disabled="!isSearchValid" 
-                :compact="isCompact"
-                @click="$emit('find')" 
-              />
-            </div>
-            
+    <div class="flex items-center gap-3">
+      <template v-for="(field, idx) in fields" :key="field.label">
+        <div class="flex-1 flex items-center bg-[#18181B] rounded-lg border border-white/10 h-8">
+          <button @click="$emit('swap')" :class="['w-8 h-8 rounded-l-lg font-bold flex items-center justify-center', field.btnClass]">
+            {{ field.label }}
+          </button>
+          <div class="flex-1 px-2">
+            <StationsSelect
+              :modelValue="form[field.index].name"
+              @update:modelValue="updateField(field.index, $event)"
+              :suggestions="getSuggestions(field.index)"
+              :isLoading="getLoading(field.index)"
+              compact
+              class="text-sm"
+              @search="q => $emit('search', q, field.index)"
+              @select="s => $emit('select', s, field.index)"
+            />
           </div>
+        </div>
+        <ArrowRight v-if="idx === 0" class="text-white/60 shrink-0" :size="16" />
+      </template>
+    </div>
+  </div>
+
+  <!-- Основной хедер -->
+  <header 
+    class="relative z-50 transition-all duration-300 w-full"
+    :class="isCompact 
+      ? 'md:sticky top-0 py-2 bg-[#FFFF0000] backdrop-blur-xl border-b border-white/10' 
+      : 'py-6 md:py-8'"
+  >
+    <div class="max-w-4xl mx-auto px-2">
+
+      <!-- Desktop -->
+      <SearchForm
+        class="hidden md:block"
+        v-bind="props"
+        :showTitle="!isCompact"
+        :showGlow="!isCompact"
+        @update:form="$emit('update:form', $event)"
+        @search="(q, i) => $emit('search', q, i)"
+        @select="(s, i) => $emit('select', s, i)"
+        @swap="$emit('swap')"
+        @find="$emit('find')"
+      />
+
+      <!-- Mobile -->
+      <div class="md:hidden relative bg-[#18181B] rounded-xl border border-white/10 shadow-xl p-3">
+        <!-- Свечение -->
+        <div v-if="!isCompact" class="absolute inset-0 -z-10 scale-105 blur-3xl opacity-20 bg-linear-to-r from-purple-500 via-pink-500 to-orange-400 rounded-2xl" />
+
+        <div class="flex flex-col gap-3">
+          <template v-for="(field, idx) in fields" :key="field.label">
+            <!-- Стрелка между полями -->
+            <div v-if="idx === 1" class="flex justify-start -my-3">
+              <button @click="$emit('swap')" class="relative left-1.5 p-0 rounded-lg">
+                <ArrowRightLeft :size="20" class="text-white/80 rotate-90" />
+              </button>
+            </div>
+
+            <!-- Поле -->
+            <div class="flex items-center gap-1">
+              <button
+                @click="$emit('swap')"
+                :class="['w-8 h-8 rounded-lg font-bold flex items-center justify-center shrink-0 transition-transform hover:scale-110 active:scale-95', field.btnClass]"
+              >
+                {{ field.label }}
+              </button>
+              <div class="flex-1 border-b-2 border-white/20">
+                <StationsSelect
+                  :modelValue="form[field.index].name"
+                  @update:modelValue="updateField(field.index, $event)"
+                  :code="form[field.index].code"
+                  :label="form[field.index].label"
+                  :suggestions="getSuggestions(field.index)"
+                  :isLoading="getLoading(field.index)"
+                  :compact="isCompact"
+                  @search="q => $emit('search', q, field.index)"
+                  @select="s => $emit('select', s, field.index)"
+                />
+              </div>
+            </div>
+          </template>
+          
+          <SearchButton v-if="!isCompact"
+            :disabled="!isSearchValid" 
+            @click="handleFind" 
+          />
         </div>
       </div>
     </div>
@@ -177,11 +183,12 @@ watch(searchKey, (newKey) => {
 
 <style scoped>
 @media (max-width: 768px) {
-  :deep(label) {
-    display: none !important;
-  }
-  :deep(.stations-select-container) {
-    margin-top: 0;
+  :deep(.stations-select-container label) { display: none }
+  :deep(.stations-select-container input) {
+    padding: 0 !important;
+    background: transparent !important;
+    border: none !important;
+    font-size: 14px !important;
   }
 }
 </style>
