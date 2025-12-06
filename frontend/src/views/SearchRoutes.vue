@@ -176,7 +176,7 @@ function handleRouteSelect(train) {
 </script>
 
 <template>
-  <div class="min-h-screen flex flex-col pb-20">
+  <div class="min-h-screen flex flex-col pb-60 md:pb-20">
     <!-- До поиска: всё по центру -->
     <div
       v-if="!hasSearched"

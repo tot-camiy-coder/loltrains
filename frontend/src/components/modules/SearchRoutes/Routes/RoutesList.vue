@@ -195,7 +195,7 @@ onUnmounted(() => {
       <button
         v-if="showScrollButton"
         @click="scrollToActive"
-        class="fixed bottom-6 right-6 flex items-center gap-2 
+        class="fixed bottom-18 md:bottom-6 right-6 flex items-center gap-2 
                px-2 py-2 rounded-full bg-yellow-300 hover:bg-yellow-500 
                text-black text-sm font-medium shadow-lg shadow-yellow-500/25
                transition-all active:scale-95"

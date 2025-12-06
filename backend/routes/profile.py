@@ -32,6 +32,28 @@ async def get_info(
         "is_owner": is_owner
     }
 
+@app.get("/search")
+async def search_users(
+    who: str = Query(..., min_length=1),
+    db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(
+        select(User.User)
+        .filter(User.User.username.ilike(f"%{who}%"))
+        .limit(10)
+    )
+    users = result.scalars().all()
+    
+    return [
+        {
+            "id": u.id,
+            "username": u.username,
+            "nickname": u.nickname,
+            "photo": u.photo,
+        }
+        for u in users
+    ]
+
 @app.post("/profile/edit")
 async def profile_edit(
     req: Request, target: str = Form(...), nickname: str = Form(...), description: str = Form(...),
@@ -47,6 +69,11 @@ async def profile_edit(
     if (url := save_file(banner, "profileb", user.banner, user.username)): user.banner = url
 
     user.description, user.nickname = description, (nickname or user.username)
+    if len(nickname) > 64:
+        return JSONResponse({"status": "LN"}, 400) # Too Long
+    if len(description) > 256:
+        return JSONResponse({"status": "LD"}, 400) # Too Long
+    
     await db.commit()
     return {"status": "OK"}
 

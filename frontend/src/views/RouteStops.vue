@@ -201,15 +201,6 @@ const trainClasses = computed(() => {
 <template>
   <header class="sticky top-0 px-3 sm:px-20 z-30 backdrop-blur-md w-full pt-3 sm:pt-4 pb-2 sm:pb-3">
     <div class="flex items-start justify-between mb-2 sm:mb-3">
-      <!-- Кнопка назад (только для ПК) -->
-      <button 
-        @click="goBack" 
-        class="hidden sm:flex items-center justify-center w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 transition-colors mr-3 shrink-0"
-        title="Назад"
-      >
-        <ArrowLeft :size="18" class="text-white" />
-      </button>
-      
       <div class="flex flex-col min-w-0 flex-1 mr-2 sm:mr-3">
         <span :class="isElektrichka ? 'text-white/40' : 'text-white/50'" class="text-[10px] sm:text-xs font-bold uppercase tracking-wider">
         <span class="text-2xl sm:text-3xl font-black text-white tracking-tight leading-none">{{ trainNumber || trainParam }}</span>

@@ -77,7 +77,7 @@ watch(mode, () => {
 </script>
 
 <template>
-  <div class="min-h-screen flex items-center justify-center px-4">
+  <div class="min-h-full flex items-center justify-center px-4 -mt-15 md:mt-30">
     <div class="w-full max-w-md animate-fade">
       
       <!-- Card -->

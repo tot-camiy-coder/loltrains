@@ -87,7 +87,7 @@ const fields = [
     class="fixed top-0 w-screen inset-x-0 z-60 bg-[#19191900] backdrop-blur-xl border-b border-white/10 px-4 py-2 transition-transform duration-300 md:hidden"
     :class="isScrolled ? 'translate-y-0' : '-translate-y-full'"
   >
-    <div class="flex items-center gap-3">
+    <div class="flex items-center gap-1">
       <template v-for="(field, idx) in fields" :key="field.label">
         <div class="flex-1 flex items-center bg-[#18181B] rounded-lg border border-white/10 h-8">
           <button @click="$emit('swap')" :class="['w-8 h-8 rounded-l-lg font-bold flex items-center justify-center', field.btnClass]">
@@ -134,7 +134,7 @@ const fields = [
       />
 
       <!-- Mobile -->
-      <div class="md:hidden relative bg-[#18181B] rounded-xl border border-white/10 shadow-xl p-3">
+      <div class="md:hidden relative -mt-20 bg-[#18181B] rounded-xl border border-white/10 shadow-xl p-3">
         <!-- Свечение -->
         <div v-if="!isCompact" class="absolute inset-0 -z-10 scale-105 blur-3xl opacity-20 bg-linear-to-r from-purple-500 via-pink-500 to-orange-400 rounded-2xl" />
 

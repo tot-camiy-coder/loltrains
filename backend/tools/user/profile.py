@@ -39,7 +39,7 @@ async def get_user_dict(user: User.User, is_owner: bool, db: AsyncSession = None
     reputation = reputation.scalar_one_or_none()
 
     comments = await db.execute(
-        select(Comment.CommentModel).filter(Comment.CommentModel.target_id == user.id)
+        select(Comment.CommentModel).filter(Comment.CommentModel.target_id == user.id).order_by(Comment.CommentModel.date.desc()).limit(100)
     )
     comments = comments.scalars().all()
 
@@ -54,7 +54,6 @@ async def get_user_dict(user: User.User, is_owner: bool, db: AsyncSession = None
             "timestamp": com.date.isoformat(),
             "sender": sender_dict
         })
-    formatted_comments.reverse()
 
     return {
         **base,

@@ -93,22 +93,21 @@ defineEmits(['update:form', 'search', 'select', 'swap', 'find'])
   <nav class="fixed bottom-0 inset-x-0 z-50 lg:hidden bg-[#0A0A0B]/90 backdrop-blur-xl border-t border-white/5 pb-[env(safe-area-inset-bottom)]">
     <div class="flex justify-around h-16">
       <router-link v-for="item in navItems" :key="item.path" :to="item.path"
-        class="flex flex-col items-center justify-center gap-1 min-w-16" :class="isActive(item.path) ? 'text-white' : 'text-white/40'">
-        <div class="w-10 h-10 rounded-xl flex items-center justify-center" :class="isActive(item.path) ? 'bg-linear-to-br from-indigo-500 to-purple-600 shadow-lg shadow-indigo-500/30' : ''">
+        class="flex flex-col items-center justify-center min-w-16" :class="isActive(item.path) ? 'text-white' : 'text-white/40'">
+        <div class="w-10 h-10 rounded-xl flex items-center justify-center" :class="''">
           <component :is="item.icon" :size="20" />
         </div>
-        <span class="text-[10px] font-medium">{{ item.label }}</span>
+        <span class="text-[10px] font-medium -mt-2">{{ item.label }}</span>
       </router-link>
 
-      <button @click="handleAuthClick" class="flex flex-col items-center justify-center gap-1 min-w-16" :class="isProfileActive ? 'text-white' : 'text-white/40'">
-        <div class="relative w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center" :class="isProfileActive ? 'ring-2 ring-indigo-500' : 'bg-white/5'">
+      <button @click="handleAuthClick" class="flex flex-col items-center justify-center min-w-16" :class="isProfileActive ? 'text-white' : 'text-white/40'">
+        <div class="relative w-8 h-8 rounded-full overflow-hidden flex items-center justify-center" :class="'bg-white/5'">
           <Loader2 v-if="isCheckingAuth" :size="18" class="animate-spin" />
           <img v-else-if="isAuthenticated && userPhoto" :src="userPhoto" class="w-full h-full object-cover" @error="user.viewer_user.photo = null" />
           <div v-else-if="isAuthenticated" class="w-full h-full bg-linear-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-xs font-semibold">{{ userInitials }}</div>
           <User v-else :size="20" />
-          <span v-if="isAuthenticated && !isCheckingAuth" class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-[#0A0A0B]" />
         </div>
-        <span class="text-[10px] font-medium">{{ isAuthenticated ? 'Профиль' : 'Войти' }}</span>
+        <span class="text-[10px] font-medium -mt-1">{{ isAuthenticated ? 'Профиль' : 'Войти' }}</span>
       </button>
     </div>
   </nav>
